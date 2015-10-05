@@ -1,0 +1,144 @@
+
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
+import org.apache.synapse.ManagedLifecycle;
+import org.apache.synapse.core.SynapseEnvironment;
+import org.apache.synapse.startup.Task;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+
+public class TestTask implements Task, ManagedLifecycle {
+	 
+	 private SynapseEnvironment synapseEnvironment;
+
+	 @Override
+	 public void destroy() {
+	  // TODO Auto-generated method stub
+
+	 }
+
+	 @Override
+	 public void init(SynapseEnvironment arg0) {
+	  this.synapseEnvironment = synapseEnvironment;
+	 }
+
+	 @Override
+	 public void execute() {
+		 
+				// JDBC driver name and database URL
+				final String DB_URL = "jdbc:mysql://localhost/sf";
+
+				// Database credentials
+				final String USER = "root";
+				final String PASS = "root";
+
+				Connection conn = null;
+				Statement stmt = null;
+
+				try {
+					String buildStatus = "";
+					String productName = "";
+					int lastFailedBuildNum;
+
+					Date date = new Date();
+					SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
+
+					// getting the list of products
+					JSONObject jsonObjectnew;
+					JSONObject jsonObject;
+					System.out.println("Connecting to wso2 org Jenkins...");
+					jsonObjectnew = JsonReader
+							.readJsonFromUrl("https://wso2.org/jenkins/api/json");
+					JSONArray products = (JSONArray) jsonObjectnew.get("jobs");
+					for (int i = 0; i < 3/* products.length() */; i++) 
+					{
+						JSONObject jsonTemp = (JSONObject) products.get(i);
+						productName = jsonTemp.get("name").toString();
+						System.out.println(productName);
+
+						// getting the snapshot for each product
+						jsonObject = JsonReader.readJsonFromUrl("https://wso2.org/jenkins/job/"+ productName + "/api/json");
+						JSONObject lastBuild = (JSONObject) jsonObject.get("lastBuild");
+						JSONObject lastSuccessfulBuild = (JSONObject) jsonObject.get("lastSuccessfulBuild");
+						
+						// get product build numbers
+						if (jsonObject.isNull("lastFailedBuild")) 
+						{
+							lastFailedBuildNum = 0;
+						} 
+						else 
+						{
+							JSONObject lastFailedBuild = (JSONObject) jsonObject.get("lastFailedBuild");
+							lastFailedBuildNum = Integer.parseInt(lastFailedBuild.get("number").toString());
+						}
+						int lastBuildNum = Integer.parseInt(lastBuild.get("number").toString());
+						int lastSuccessfulBuildNum = Integer.parseInt(lastSuccessfulBuild.get("number").toString());
+						
+
+						// checking the status of the last build
+						if (lastBuildNum == lastSuccessfulBuildNum) 
+						{
+							buildStatus = "Success";
+						} 
+						else if (lastBuildNum == lastFailedBuildNum) 
+						{
+							buildStatus = "Failure";
+						} 
+						else 
+						{
+							buildStatus = "Building";
+						}
+						System.out.println(buildStatus);
+					
+						Class.forName("com.mysql.jdbc.Driver");
+						System.out.println("Connecting to database...");
+						conn = DriverManager.getConnection(DB_URL, USER, PASS);
+						System.out.println("Creating statement...");
+						stmt = conn.createStatement();
+						String sql;
+						sql = "INSERT INTO BuildData(Timestamp,Product,BuildStatus) VALUES('"
+								+ dateFormat.format(date)
+								+ "','"
+								+ productName
+								+ "','"
+								+ buildStatus + "')";
+						stmt.executeUpdate(sql);
+						System.out.println("Successfully executed statement...");
+						stmt.close();
+						conn.close();
+					}
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (JSONException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (SQLException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (ClassNotFoundException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+
+			
+	  
+	 }//end of execute
+
+	 
+	 public static void main(String[] args) {
+			// TODO Auto-generated method stub
+		 TestTask tt = new TestTask();
+		 tt.execute();
+System.out.println("executed");
+		}
+	}
+
